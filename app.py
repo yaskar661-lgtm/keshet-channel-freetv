@@ -133,13 +133,9 @@ def serve_playlist(name):
 
 @app.route("/proxy")
 def proxy():
-    """
-    Alt m3u8 veya TS segmentleri için proxy. 
-    Eğer gelen url bir m3u8 ise, 4 saniyede bir güncel içeriği ve biletleri tazeleyerek sunar.
-    """
     url = request.args.get("url")
-    if not url:
-        return "Missing URL", 400
+    if not url or "https://mako-streaming.akamaized.net" not in url:
+        return "Invalid or Missing URL", 400
     
     toki = cache.get("ticket", "")
     
@@ -194,10 +190,9 @@ def proxy():
 
 @app.route("/segment.ts")
 def segment_proxy():
-    """MP4 segmentleri için şeffaf proxy."""
     url = request.args.get("url")
-    if not url:
-        return "Missing URL", 400
+    if not url or "https://mako-streaming.akamaized.net" not in url:
+        return "Invalid or Missing URL", 400
     
     toki = cache.get("ticket", "")
     if url.endswith(".mp4") and toki and toki not in url:
