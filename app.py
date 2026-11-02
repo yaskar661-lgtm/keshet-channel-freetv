@@ -209,6 +209,18 @@ def segment_proxy():
 
     return Response(generate(), mimetype="video/mp4")
 
+@app.route("/restart")
+def restart_server():
+    """Sunucuyu öldürmeden (veya döngüyü kesmeden) yeniden başlatır."""
+    def delayed_restart():
+        time.sleep(1) # Cevabın istemciye gitmesi için kısa bir bekleme
+        python = sys.executable
+        os.execl(python, python, *sys.argv)
+
+    # Yeniden başlatma işlemini ayrı bir thread'de tetikliyoruz ki HTTP isteği başarıyla dönebilsin
+    threading.Thread(target=delayed_restart).exec = threading.Thread(target=delayed_restart).start()
+    return {"status": "success", "message": "Sunucu yeniden başlatılıyor..."}, 200
+
 if __name__ == "__main__":
     t = threading.Thread(target=update_ticket_background, daemon=True)
     t.start()
