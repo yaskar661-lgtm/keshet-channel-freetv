@@ -1,6 +1,6 @@
 import time
 import threading
-from flask import Flask, Response, request
+from flask import Flask, Response, request, redirect
 import requests
 import os
 
@@ -80,7 +80,7 @@ def update_ticket_background():
 
 @app.route("/isr/<name>.m3u8")
 def serve_playlist(name):
-    """Master m3u8 listesini çeker, master_url kontrolüyle biletleri işler."""
+    """Kanal için güncel bileti ekler ve Cloudflare Worker adresine yönlendirir (redirect)."""
     if name not in CHANNELS:
         return "Channel not found", 404
     
@@ -89,136 +89,25 @@ def serve_playlist(name):
     
     master_url = data["master"]
     
-    # Master URL bazlı .m3u8 ve bilet kontrolü
+    # Master URL ile bileti birleştirme
     if master_url.endswith(".m3u8") and toki:
         master_url_with_ticket = f"{master_url}?{toki}"
     else:
         master_url_with_ticket = master_url
     
-    try:
-        resp = requests.get(master_url_with_ticket, headers=HEADERS)
-        if resp.status_code != 200:
-            return "Failed to fetch master playlist", 500
-            
-        new_lines = []
-        for line in resp.text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("#"):
-                new_lines.append(line)
-            else:
-                if ".mp4" in line.lower():
-                    target_url = data["base"] + line
-                    if target_url.endswith(".mp4") and toki:
-                        target_url += f"?{toki}"
-                    proxied_url = f"/segment.ts?url={requests.utils.quote(target_url, safe='')}"
-                elif line.endswith(".m3u8") or ".m3u8" in line.lower():
-                    target_url = data["base"] + line
-                    if master_url.endswith(".m3u8") and toki:
-                        target_url += f"?{toki}"
-                    proxied_url = f"/proxy?url={requests.utils.quote(target_url, safe='')}"
-                else:
-                    # TS veya diğer segmentler için de proxy?url= kullanalım
-                    target_url = data["base"] + line
-                    if toki:
-                        target_url += f"?{toki}"
-                    proxied_url = f"/proxy?url={requests.utils.quote(target_url, safe='')}"
-                    
-                new_lines.append(proxied_url)
-                
-        return Response("\n".join(new_lines), mimetype="application/vnd.apple.mpegurl")
-    except Exception as e:
-        return f"Error: {e}", 500
-
-@app.route("/proxy")
-def proxy():
-    url = request.args.get("url")
-    if not url or "https://mako-streaming.akamaized.net" not in url:
-        return "Invalid or Missing URL", 400
-    
-    toki = cache.get("ticket", "")
-    
-    # Eğer istek atılan URL m3u8 uzantılıysa içeriğini anlık çekip güncelliyoruz (4 saniyede bir tetiklenmeye uygundur)
-    if ".m3u8" in url:
-        if toki and toki not in url:
-            url += ("&" if "?" in url else "?") + toki
-            
-        try:
-            resp = requests.get(url, headers=HEADERS)
-            if resp.status_code == 200:
-                # Alt m3u8 içindeki göreceli segment yollarını da /proxy?url= formatına çevirebiliriz
-                base_url = url.rsplit("/", 1)[0] + "/"
-                new_lines = []
-                for line in resp.text.splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if line.startswith("#"):
-                        new_lines.append(line)
-                    else:
-                        if line.startswith("http"):
-                            sub_target = line
-                        else:
-                            sub_target = base_url + line
-                        
-                        if toki and toki not in sub_target:
-                            sub_target += ("&" if "?" in sub_target else "?") + toki
-                            
-                        proxied_sub = f"/proxy?url={requests.utils.quote(sub_target, safe='')}"
-                        new_lines.append(proxied_sub)
-                        
-                return Response("\n".join(new_lines), mimetype="application/vnd.apple.mpegurl")
-        except Exception:
-            pass
-
-    # Normal TS segmentleri veya diğer dosyalar için direkt akış (stream) proxy
-    if toki and toki not in url:
-        url += ("&" if "?" in url else "?") + toki
-
-    def generate():
-        try:
-            with requests.get(url, headers=HEADERS, stream=True) as r:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        yield chunk
-        except Exception:
-            pass
-
-    mimetype = "application/vnd.apple.mpegurl" if ".m3u8" in url else "video/mp2t"
-    return Response(generate(), mimetype=mimetype)
-
-@app.route("/segment.ts")
-def segment_proxy():
-    url = request.args.get("url")
-    if not url or "https://mako-streaming.akamaized.net" not in url:
-        return "Invalid or Missing URL", 400
-    
-    toki = cache.get("ticket", "")
-    if url.endswith(".mp4") and toki and toki not in url:
-        url += ("&" if "?" in url else "?") + toki
-
-    def generate():
-        try:
-            with requests.get(url, headers=HEADERS, stream=True) as r:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        yield chunk
-        except Exception:
-            pass
-
-    return Response(generate(), mimetype="video/mp4")
+    # İstediğin formatta Worker adresine yönlendiriyoruz (302 Geçici Yönlendirme)
+    guard_url = f"https://guard.sekobes.workers.dev/?url={master_url_with_ticket}"
+    return redirect(guard_url, code=302)
 
 @app.route("/restart")
 def restart_server():
     """Sunucuyu öldürmeden (veya döngüyü kesmeden) yeniden başlatır."""
     def delayed_restart():
-        time.sleep(1) # Cevabın istemciye gitmesi için kısa bir bekleme
+        time.sleep(1)
         python = sys.executable
         os.execl(python, python, *sys.argv)
 
-    # Yeniden başlatma işlemini ayrı bir thread'de tetikliyoruz ki HTTP isteği başarıyla dönebilsin
-    threading.Thread(target=delayed_restart).exec = threading.Thread(target=delayed_restart).start()
+    threading.Thread(target=delayed_restart).start()
     return {"status": "success", "message": "Sunucu yeniden başlatılıyor..."}, 200
 
 if __name__ == "__main__":
