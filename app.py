@@ -24,6 +24,10 @@ CHANNELS = {
         "master": "https://mako-streaming.akamaized.net/stream/hls/live/2033791/k12n12wad/index.m3u8",
         "base": "https://mako-streaming.akamaized.net/stream/hls/live/2033791/k12n12wad/",
     },
+    "n12rh": {
+        "master": "https://mako-streaming.akamaized.net/n12/hls/live/20000821/k12rh/index.m3u8",
+        "base": "https://mako-streaming.akamaized.net/n12/hls/live/20000821/k12rh/",
+    },
     "comedy": {
         "master": "https://mako-streaming.akamaized.net/evrideo/hls/live/20001278/free_comedy/index.m3u8",
         "base": "https://mako-streaming.akamaized.net/evrideo/hls/live/20001278/free_comedy/"
