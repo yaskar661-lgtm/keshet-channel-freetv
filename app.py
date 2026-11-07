@@ -108,9 +108,9 @@ def update_akamai_ticket_background():
 
 
 def update_aws_ticket_background():
-  """Cloudfront için Ticket'ı arka planda 4 saatte bir yeniler."""
+  """Cloudfront için Ticket'ı arka planda 1 saatte bir yeniler."""
   while True:
-    time.sleep(14400)
+    time.sleep(3.600)
     fetch_aws_ticket()
 
 
