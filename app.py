@@ -125,7 +125,7 @@ def serve_playlist_worker(name):
   master_url = data["master"]
 
   if master_url.endswith(".m3u8") and toki:
-    master_url_with_ticket = f"{master_url}?b-in-range=0-5000&{toki}"
+    master_url_with_ticket = f"{master_url}?{toki}"
   else:
     master_url_with_ticket = master_url
 
